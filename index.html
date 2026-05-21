@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+
+<!-- ✅ iPhone 必须 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="倒班日历">
+
+<!-- ✅ 桌面图标（你之后可以换成自己的） -->
+<link rel="apple-touch-icon" href="icon.png">
+
+<title>核电倒班日历</title>
+
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial;
+  margin: 10px;
+  background: #fafafa;
+  overscroll-behavior: none;
+}
+
+select, button {
+  margin: 5px;
+  padding: 6px 10px;
+  font-size: 14px;
+}
+
+table {
+  border-collapse: collapse;
+  margin-top: 10px;
+  background: #fff;
+  width: 100%;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  width: 14%;
+  height: 62px;
+  text-align: center;
+  vertical-align: middle;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+th {
+  background: #ececec;
+}
+
+.on-duty { background: #e6f4ff; }
+.off-duty { background: #f5f5f5; }
+.training { background: #f3e8ff; }
+
+.today {
+  outline: 2px solid #1890ff;
+  outline-offset: -2px;
+}
+
+.holiday {
+  display: block;
+  font-size: 10px;
+  color: #d32f2f;
+  margin-top: 2px;
+}
+
+#day-info {
+  margin-top: 15px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  background: #fff;
+  font-size: 14px;
+}
+</style>
+</head>
+
+<body>
+
+<h2 style="font-size:18px;">核电运行倒班日历</h2>
+
+<label>选择值：
+<select id="team">
+  <option value="1">一值</option>
+  <option value="2">二值</option>
+  <option value="3">三值</option>
+  <option value="4">四值</option>
+  <option value="5">五值</option>
+  <option value="6">六值</option>
+</select>
+</label>
+
+<button onclick="changeMonth(-1)">上月</button>
+<span id="month"></span>
+<button onclick="changeMonth(1)">下月</button>
+
+<table id="calendar"></table>
+
+<div id="day-info">
+  点击日历中的日期查看当天早中夜班信息
+</div>
+
+<script>
+/* ===== 倒班规则 ===== */
+const shiftCycle = [
+ "中","早","早","夜","夜","休","休","休",
+ "中","中","早","早","夜","夜","休","休","休",
+ "中","中","早","夜","夜","休","休","休","休",
+ "中","中","早","夜","夜","休","休","休","休","培","培","培","休","休","休","休"
+];
+
+const baseDay = {
+  "1": 30, "2": 23, "3": 16, "4": 9, "5": 2, "6": 37
+};
+
+const baseDate = new Date(2026, 4, 19);
+let viewDate = new Date();
+
+/* ===== 节日 ===== */
+const holidays = {
+  "2025-01-01":"元旦","2025-01-29":"春节","2025-03-08":"妇女节",
+  "2025-04-04":"清明","2025-05-01":"劳动节","2025-05-31":"端午",
+  "2025-06-01":"儿童节","2025-08-01":"建军节",
+  "2025-10-01":"国庆","2025-10-06":"中秋",
+
+  "2026-01-01":"元旦","2026-02-17":"春节","2026-03-08":"妇女节",
+  "2026-04-04":"清明","2026-05-01":"劳动节","2026-06-01":"儿童节",
+  "2026-06-19":"端午","2026-08-01":"建军节",
+  "2026-09-25":"中秋","2026-10-01":"国庆",
+
+  "2027-01-01":"元旦","2027-02-06":"春节","2027-03-08":"妇女节",
+  "2027-04-04":"清明","2027-05-01":"劳动节","2027-06-01":"儿童节",
+  "2027-06-09":"端午","2027-08-01":"建军节",
+  "2027-09-15":"中秋","2027-10-01":"国庆",
+
+  "2028-01-01":"元旦","2028-01-26":"春节","2028-03-08":"妇女节",
+  "2028-04-04":"清明","2028-05-01":"劳动节","2028-05-28":"端午",
+  "2028-06-01":"儿童节","2028-08-01":"建军节",
+  "2028-10-01":"国庆","2028-10-03":"中秋",
+
+  "2029-01-01":"元旦","2029-02-13":"春节","2029-03-08":"妇女节",
+  "2029-04-04":"清明","2029-05-01":"劳动节","2029-05-20":"端午",
+  "2029-06-01":"儿童节","2029-08-01":"建军节",
+  "2029-09-22":"中秋","2029-10-01":"国庆",
+
+  "2030-01-01":"元旦","2030-02-03":"春节","2030-03-08":"妇女节",
+  "2030-04-04":"清明","2030-05-01":"劳动节","2030-06-01":"儿童节",
+  "2030-06-11":"端午","2030-08-01":"建军节",
+  "2030-09-12":"中秋","2030-10-01":"国庆"
+};
+
+function getHoliday(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth()+1).padStart(2,"0");
+  const d = String(date.getDate()).padStart(2,"0");
+  return holidays[`${y}-${m}-${d}`] || null;
+}
+
+/* ===== 班次计算 ===== */
+function getShift(team, date) {
+  const diffDays = Math.floor((date - baseDate) / 86400000);
+  let idx = (baseDay[team] - 1 + diffDays) % 42;
+  if (idx < 0) idx += 42;
+  return shiftCycle[idx];
+}
+
+/* ===== 详情 ===== */
+function showDayShift(date) {
+  const teams = { 早:[], 中:[], 夜:[] };
+  for (let i=1;i<=6;i++) {
+    const s = getShift(i, date);
+    if (teams[s]) teams[s].push(["一","二","三","四","五","六"][i-1]+"值");
+  }
+  const y = date.getFullYear(), m = date.getMonth()+1, d = date.getDate();
+  document.getElementById("day-info").innerHTML = `
+    <strong>${y}-${m.toString().padStart(2,'0')}-${d.toString().padStart(2,'0')}</strong>
+    <p>早班：${teams.早.join("、")||"无"}</p>
+    <p>中班：${teams.中.join("、")||"无"}</p>
+    <p>夜班：${teams.夜.join("、")||"无"}</p>
+  `;
+}
+
+/* ===== 渲染 ===== */
+function render() {
+  const team = document.getElementById("team").value;
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+
+  document.getElementById("month").innerText = `${year}年${month+1}月`;
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+
+  let html = "<tr><th>日</th><th>一</th><th>二</th><th>三</th><th>四</th><th>五</th><th>六</th></tr><tr>";
+  for (let i=0;i<firstDay;i++) html += "<td></td>";
+
+  for (let d=1;d<=daysInMonth;d++) {
+    const date = new Date(year, month, d);
+    const shift = getShift(team, date);
+    const holiday = getHoliday(date);
+    const isToday = date.toDateString() === new Date().toDateString();
+
+    let cls =
+      shift==="休"?"off-duty":
+      shift==="培"?"training":"on-duty";
+
+    if (isToday) cls += " today";
+
+    html += `<td class="${cls}" onclick="showDayShift(new Date(${year},${month},${d}))">
+      ${d}<br>${shift}
+      ${holiday?`<span class="holiday">${holiday}</span>`:""}
+    </td>`;
+
+    if ((firstDay+d)%7===0) html += "</tr><tr>";
+  }
+  html += "</tr>";
+  document.getElementById("calendar").innerHTML = html;
+}
+
+function changeMonth(n){
+  viewDate.setMonth(viewDate.getMonth()+n);
+  render();
+}
+
+/* ===== 初始化 ===== */
+(function(){
+  const t = localStorage.getItem("nuclearTeam");
+  if (t) document.getElementById("team").value = t;
+  document.getElementById("team").onchange = e=>{
+    localStorage.setItem("nuclearTeam",e.target.value);
+    render();
+  };
+  render();
+})();
+</script>
+
+</body>
+</html>
